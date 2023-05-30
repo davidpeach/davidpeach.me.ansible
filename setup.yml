@@ -45,6 +45,14 @@
         state: present
         key: "{{ copy_local_key }}"
 
+    - name: "create www directory"
+      file:
+        path: /var/www/{{ http_host }}
+        state: directory
+        mode: '0775'
+        owner: "{{ create_user }}"
+        group: "{{ create_user }}"
+
     - name: Disable password authentication for root
       lineinfile:
         path: /etc/ssh/sshd_config
