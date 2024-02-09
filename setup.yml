@@ -2,10 +2,17 @@
 - hosts: all
   become: true
   user: root
+  gather_facts: no
   vars_files:
     - vars/default.yml
 
   tasks:
+    - name: Wait for system to become reachable
+      wait_for_connection:
+
+    - name: Gather facts for the first time
+      setup:
+
     - name: Install Prerequisites
       apt: name=aptitude update_cache=yes state=latest force_apt_get=yes
 
