@@ -1,16 +1,10 @@
 ---
-create_user: <CREATE_USER>
-copy_local_key: "{{ lookup('file', '<COPY_LOCAL_KEY>') }}"
-certbot_email: "<CERTBOT_EMAIL>"
+create_user: david
+copy_local_key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_ed25519_zet.pub') }}"
+certbot_email: "mail@davidpeach.me"
 sys_packages: [ 'curl', 'vim', 'git', 'ufw', 'nginx', 'certbot', 'python3-certbot-nginx' ]
-http_host: "<HTTP_HOST>"
-http_conf: "<HTTP_HOST>.conf"
+http_host: "davidpeach.me"
+http_conf: "davidpeach.me.conf"
+http_host_zet: "zet.davidpeach.me"
+http_conf_zet: "zet.davidpeach.me.conf"
 http_port: "80"
-
-# create_user: david
-# copy_local_key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_ed25519_zet.pub') }}"
-# certbot_email: "mail@davidpeach.co.uk"
-# sys_packages: [ 'curl', 'vim', 'git', 'ufw', 'nginx', 'certbot', 'python3-certbot-nginx' ]
-# http_host: "zet.davidpeach.me"
-# http_conf: "zet.davidpeach.me.conf"
-# http_port: "80"

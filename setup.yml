@@ -2,23 +2,12 @@
 - hosts: all
   become: true
   user: root
-  gather_facts: no
   vars_files:
     - vars/default.yml
 
   tasks:
-    - name: Wait for system to become reachable
-      wait_for_connection:
-
-    - name: Gather facts for the first time
-      setup:
-
     - name: Install Prerequisites
-      register: apt_status
       apt: name=aptitude update_cache=yes state=latest force_apt_get=yes
-      until: apt_status is success
-      delay: 6
-      retries: 10
 
     - name: Update apt
       apt: update_cache=yes
@@ -56,9 +45,17 @@
         state: present
         key: "{{ copy_local_key }}"
 
-    - name: "create www directory"
+    - name: "create www directory for main site"
       file:
         path: /var/www/{{ http_host }}
+        state: directory
+        mode: '0775'
+        owner: "{{ create_user }}"
+        group: "{{ create_user }}"
+
+    - name: "create www directory for zet"
+      file:
+        path: /var/www/{{ http_host_zet }}
         state: directory
         mode: '0775'
         owner: "{{ create_user }}"
@@ -71,15 +68,27 @@
         regexp: '^#?PermitRootLogin'
         line: 'PermitRootLogin prohibit-password'
 
-    - name: Sets Nginx conf file
+    - name: Sets Nginx conf file for main site
       template:
         src: "files/nginx.conf.j2"
         dest: "/etc/nginx/sites-available/{{ http_conf }}"
 
-    - name: Enables new site
+    - name: Enables new site for main site
       file:
         src: "/etc/nginx/sites-available/{{ http_conf }}"
         dest: "/etc/nginx/sites-enabled/{{ http_conf }}"
+        state: link
+      notify: Reload Nginx
+
+    - name: Sets Nginx conf file for zet site
+      template:
+        src: "files/nginx.zet.conf.j2"
+        dest: "/etc/nginx/sites-available/{{ http_conf_zet }}"
+
+    - name: Enables new site for zet site
+      file:
+        src: "/etc/nginx/sites-available/{{ http_conf_zet }}"
+        dest: "/etc/nginx/sites-enabled/{{ http_conf_zet }}"
         state: link
       notify: Reload Nginx
 
@@ -90,12 +99,22 @@
       notify: Reload Nginx
 
     - name: create certificate - standalone
-      command: "certbot --nginx  -d  {{ http_host }} --agree-tos --noninteractive --email {{ certbot_email }}"
+      command: "certbot --nginx  -d  {{ http_host }} -d {{ http_host_zet }} --expand --agree-tos --noninteractive --email {{ certbot_email }}"
       notify: Reload Nginx
 
-    - name: add hooks for renewal
+    - name: add hooks for renewal of main ssl
       lineinfile:
         path: /etc/letsencrypt/renewal/{{ http_host }}.conf
+        line: "{{ item }}"
+        insertafter: EOF
+      with_items:
+        - "post_hook = systemctl start apache2"
+        - "pre_hook = systemctl stop apache2"
+      notify: Reload Nginx
+
+    - name: add hooks for renewal of zet ssl
+      lineinfile:
+        path: /etc/letsencrypt/renewal/{{ http_host_zet }}.conf
         line: "{{ item }}"
         insertafter: EOF
       with_items:
