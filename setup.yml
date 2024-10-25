@@ -45,17 +45,17 @@
         state: present
         key: "{{ copy_local_key }}"
 
-    - name: "create www directory for main site"
+    - name: "create www directory for zet site"
       file:
-        path: /var/www/{{ http_host }}
+        path: /var/www/{{ http_host_zet }}
         state: directory
         mode: '0775'
         owner: "{{ create_user }}"
         group: "{{ create_user }}"
 
-    - name: "create www directory for zet"
+    - name: "create www directory for main site"
       file:
-        path: /var/www/{{ http_host_zet }}
+        path: /var/www/{{ http_host }}
         state: directory
         mode: '0775'
         owner: "{{ create_user }}"
@@ -68,6 +68,11 @@
         regexp: '^#?PermitRootLogin'
         line: 'PermitRootLogin prohibit-password'
 
+    - name: Sets Nginx conf file for zet site
+      template:
+        src: "files/nginx.zet.conf.j2"
+        dest: "/etc/nginx/sites-available/{{ http_conf_zet }}"
+
     - name: Sets Nginx conf file for main site
       template:
         src: "files/nginx.conf.j2"
@@ -79,11 +84,6 @@
         dest: "/etc/nginx/sites-enabled/{{ http_conf }}"
         state: link
       notify: Reload Nginx
-
-    - name: Sets Nginx conf file for zet site
-      template:
-        src: "files/nginx.zet.conf.j2"
-        dest: "/etc/nginx/sites-available/{{ http_conf_zet }}"
 
     - name: Enables new site for zet site
       file:
@@ -99,7 +99,11 @@
       notify: Reload Nginx
 
     - name: create certificate - standalone
-      command: "certbot --nginx  -d  {{ http_host }} -d {{ http_host_zet }} --expand --agree-tos --noninteractive --email {{ certbot_email }}"
+      command: "certbot --nginx  -d  {{ http_host }} --expand --agree-tos --noninteractive --email {{ certbot_email }}"
+      notify: Reload Nginx
+
+    - name: create certificate for zet - standalone
+      command: "certbot --nginx  -d  {{ http_host_zet }} --expand --agree-tos --noninteractive --email {{ certbot_email }}"
       notify: Reload Nginx
 
     - name: add hooks for renewal of main ssl
