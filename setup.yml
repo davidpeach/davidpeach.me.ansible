@@ -45,13 +45,13 @@
         state: present
         key: "{{ copy_local_key }}"
 
-    - name: "create www directory for zet site"
-      file:
-        path: /var/www/{{ http_host_zet }}
-        state: directory
-        mode: '0775'
-        owner: "{{ create_user }}"
-        group: "{{ create_user }}"
+    # - name: "create www directory for zet site"
+    #   file:
+    #     path: /var/www/{{ http_host_zet }}
+    #     state: directory
+    #     mode: '0775'
+    #     owner: "{{ create_user }}"
+    #     group: "{{ create_user }}"
 
     - name: "create www directory for main site"
       file:
@@ -68,10 +68,10 @@
         regexp: '^#?PermitRootLogin'
         line: 'PermitRootLogin prohibit-password'
 
-    - name: Sets Nginx conf file for zet site
-      template:
-        src: "files/nginx.zet.conf.j2"
-        dest: "/etc/nginx/sites-available/{{ http_conf_zet }}"
+    # - name: Sets Nginx conf file for zet site
+    #   template:
+    #     src: "files/nginx.zet.conf.j2"
+    #     dest: "/etc/nginx/sites-available/{{ http_conf_zet }}"
 
     - name: Sets Nginx conf file for main site
       template:
@@ -85,12 +85,12 @@
         state: link
       notify: Reload Nginx
 
-    - name: Enables new site for zet site
-      file:
-        src: "/etc/nginx/sites-available/{{ http_conf_zet }}"
-        dest: "/etc/nginx/sites-enabled/{{ http_conf_zet }}"
-        state: link
-      notify: Reload Nginx
+    # - name: Enables new site for zet site
+    #   file:
+    #     src: "/etc/nginx/sites-available/{{ http_conf_zet }}"
+    #     dest: "/etc/nginx/sites-enabled/{{ http_conf_zet }}"
+    #     state: link
+    #   notify: Reload Nginx
 
     - name: Removes "default" site
       file:
@@ -102,9 +102,9 @@
       command: "certbot --nginx  -d  {{ http_host }} --expand --agree-tos --noninteractive --email {{ certbot_email }}"
       notify: Reload Nginx
 
-    - name: create certificate for zet - standalone
-      command: "certbot --nginx  -d  {{ http_host_zet }} --expand --agree-tos --noninteractive --email {{ certbot_email }}"
-      notify: Reload Nginx
+    # - name: create certificate for zet - standalone
+    #   command: "certbot --nginx  -d  {{ http_host_zet }} --expand --agree-tos --noninteractive --email {{ certbot_email }}"
+    #   notify: Reload Nginx
 
     - name: add hooks for renewal of main ssl
       lineinfile:
@@ -116,15 +116,15 @@
         - "pre_hook = systemctl stop apache2"
       notify: Reload Nginx
 
-    - name: add hooks for renewal of zet ssl
-      lineinfile:
-        path: /etc/letsencrypt/renewal/{{ http_host_zet }}.conf
-        line: "{{ item }}"
-        insertafter: EOF
-      with_items:
-        - "post_hook = systemctl start apache2"
-        - "pre_hook = systemctl stop apache2"
-      notify: Reload Nginx
+    # - name: add hooks for renewal of zet ssl
+    #   lineinfile:
+    #     path: /etc/letsencrypt/renewal/{{ http_host_zet }}.conf
+    #     line: "{{ item }}"
+    #     insertafter: EOF
+    #   with_items:
+    #     - "post_hook = systemctl start apache2"
+    #     - "pre_hook = systemctl stop apache2"
+    #   notify: Reload Nginx
 
     - name: UFW - Allow SSH connections
       ufw:

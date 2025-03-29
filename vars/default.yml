@@ -1,7 +1,7 @@
 ---
 create_user: david
-copy_local_key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_ed25519_zet.pub') }}"
-certbot_email: "mail@davidpeach.me"
+copy_local_key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_ed25519.pub') }}"
+certbot_email: "mail@davidpeach.co.uk"
 sys_packages: [ 'curl', 'vim', 'git', 'ufw', 'nginx', 'certbot', 'python3-certbot-nginx' ]
 http_host: "davidpeach.me"
 http_conf: "davidpeach.me.conf"
