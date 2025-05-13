@@ -1,0 +1,41 @@
+#!/bin/bash
+
+TARGET_DIR="{{ project_root_dir }}"
+GIT_DIR="{{ bare_repo_dir }}"
+DEPLOY_BRANCH="{{ deploy_branch }}"
+
+set -e
+
+echo "---- Git Post-Receive Hook Triggered ----"
+while read oldrev newrev refname; do
+    branch=$(git rev-parse --symbolic --abbrev-ref $refname)
+    if [ "$branch" = "$DEPLOY_BRANCH" ]; then
+        echo "[deploy] ---> Deploy trigger received for branch '$DEPLOY_BRANCH'"
+        echo "[deploy] ---> Checking out code to $TARGET_DIR..."
+        git --work-tree="$TARGET_DIR" --git-dir="$GIT_DIR" checkout "$DEPLOY_BRANCH" -f
+        cd "$TARGET_DIR" || { echo "[deploy] ERROR: Could not cd into $TARGET_DIR. Aborting."; exit 1; }
+        if [ ! -f ".env" ]; then
+            echo "[deploy] !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" >&2
+            echo "[deploy] ERROR: Production .env file not found in $TARGET_DIR." >&2
+            echo "[deploy] Deployment aborted. Please create the .env file securely on the server first." >&2
+            echo "[deploy] !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" >&2
+            exit 1
+        fi
+        echo "[deploy] ---> Found existing production .env file."
+        echo "[deploy] ---> Building Docker images (if needed)..."
+        docker compose build --pull php
+        echo "[deploy] ---> Running composer install for production..."
+        docker compose run --rm composer install --no-dev --optimize-autoloader
+        echo "[deploy] ---> Starting/Updating Docker containers..."
+        docker compose up -d --force-recreate --remove-orphans
+        echo "[deploy] ---> Running WordPress database updates (if any)..."
+        docker compose exec php wp core update-db || echo "[deploy] ---> WP core update-db command finished (ignore error if no update needed)."
+        # docker compose exec php wp cache flush || echo "[deploy] ---> WP cache flush failed or not needed."
+        echo "[deploy] ---> Deployment of branch '$DEPLOY_BRANCH' completed successfully!"
+        echo "------------------------------------------"
+    else
+        echo "[deploy] ---> Push received for branch '$branch', hook ignored (only deploys '$DEPLOY_BRANCH')."
+        echo "------------------------------------------"
+    fi
+done
+exit 0

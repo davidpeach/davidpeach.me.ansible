@@ -1,9 +1,10 @@
 ---
-- hosts: all
-  become: true
-  user: root
+- name: Wordpress with bedrock setup
+  hosts: server
+  become: yes
   vars_files:
     - vars/default.yml
+    - vars/vault.yml
 
   tasks:
     - name: Install Prerequisites
@@ -12,150 +13,199 @@
     - name: Update apt
       apt: update_cache=yes
 
-    - name: Install required system packages
-      apt: name={{ sys_packages }} state=latest
+    - name: Install required packages
+      apt:
+        name: "{{ sys_packages }}"
+        state: present
+        update_cache: yes
 
-    - name: Make sure we have a 'wheel' group
+    - name: Create the deployment user group
       group:
-        name: wheel
+        name: "{{ deploy_group }}"
         state: present
 
-    - name: Allow 'wheel' group to have passwordless sudo
-      lineinfile:
-        path: /etc/sudoers
-        state: present
-        regexp: '^%wheel'
-        line: '%wheel ALL=(ALL) NOPASSWD: ALL'
-        validate: '/usr/sbin/visudo -cf %s'
-
-    - name: Create a new regular user with sudo privileges
+    - name: Create the deployment user
       user:
-        name: "{{ create_user }}"
-        state: present
-        groups: 
-          - wheel
-          - www-data
-        append: true
-        create_home: true
+        name: "{{ deploy_user }}"
+        group: "{{ deploy_group }}"
         shell: /bin/bash
-
-    - name: Set authorized key for remote user
-      authorized_key:
-        user: "{{ create_user }}"
         state: present
-        key: "{{ copy_local_key }}"
+        create_home: yes
 
-    # - name: "create www directory for zet site"
-    #   file:
-    #     path: /var/www/{{ http_host_zet }}
-    #     state: directory
-    #     mode: '0775'
-    #     owner: "{{ create_user }}"
-    #     group: "{{ create_user }}"
+    - name: Add deploy user's SSH public key for passwordless login
+      authorized_key:
+        user: "{{ deploy_user }}"
+        key: "{{ local_ssh_pub_key }}"
+        state: present
 
-    - name: "create www directory for main site"
-      file:
-        path: /var/www/{{ http_host }}
-        state: directory
-        mode: '0775'
-        owner: "{{ create_user }}"
-        group: "{{ create_user }}"
+    - name: Add deploy user to the 'docker' group
+      user:
+        name: "{{ deploy_user }}"
+        groups: docker
+        append: yes
 
-    - name: Disable password authentication for root
+    - name: Disable root login
       lineinfile:
         path: /etc/ssh/sshd_config
-        state: present
         regexp: '^#?PermitRootLogin'
-        line: 'PermitRootLogin prohibit-password'
+        line: 'PermitRootLogin no'
+        state: present
+      notify: Restart sshd
 
-    # - name: Sets Nginx conf file for zet site
-    #   template:
-    #     src: "files/nginx.zet.conf.j2"
-    #     dest: "/etc/nginx/sites-available/{{ http_conf_zet }}"
-
-    - name: Sets Nginx conf file for main site
-      template:
-        src: "files/nginx.conf.j2"
-        dest: "/etc/nginx/sites-available/{{ http_conf }}"
-
-    - name: Enables new site for main site
-      file:
-        src: "/etc/nginx/sites-available/{{ http_conf }}"
-        dest: "/etc/nginx/sites-enabled/{{ http_conf }}"
-        state: link
-      notify: Reload Nginx
-
-    # - name: Enables new site for zet site
-    #   file:
-    #     src: "/etc/nginx/sites-available/{{ http_conf_zet }}"
-    #     dest: "/etc/nginx/sites-enabled/{{ http_conf_zet }}"
-    #     state: link
-    #   notify: Reload Nginx
-
-    - name: Removes "default" site
-      file:
-        path: "/etc/nginx/sites-enabled/default"
-        state: absent
-      notify: Reload Nginx
-
-    - name: create certificate - standalone
-      command: "certbot --nginx  -d  {{ http_host }} --expand --agree-tos --noninteractive --email {{ certbot_email }}"
-      notify: Reload Nginx
-
-    # - name: create certificate for zet - standalone
-    #   command: "certbot --nginx  -d  {{ http_host_zet }} --expand --agree-tos --noninteractive --email {{ certbot_email }}"
-    #   notify: Reload Nginx
-
-    - name: add hooks for renewal of main ssl
+    - name: Disable password authentication
       lineinfile:
-        path: /etc/letsencrypt/renewal/{{ http_host }}.conf
-        line: "{{ item }}"
-        insertafter: EOF
-      with_items:
-        - "post_hook = systemctl start apache2"
-        - "pre_hook = systemctl stop apache2"
-      notify: Reload Nginx
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+        state: present
+      notify: Restart sshd
 
-    # - name: add hooks for renewal of zet ssl
-    #   lineinfile:
-    #     path: /etc/letsencrypt/renewal/{{ http_host_zet }}.conf
-    #     line: "{{ item }}"
-    #     insertafter: EOF
-    #   with_items:
-    #     - "post_hook = systemctl start apache2"
-    #     - "pre_hook = systemctl stop apache2"
-    #   notify: Reload Nginx
-
-    - name: UFW - Allow SSH connections
+    - name: Allow missing ports with UFW
       ufw:
         rule: allow
-        name: OpenSSH
-
-    - name: UFW - Allow HTTP connections
-      ufw:
-        rule: allow
-        port: 80
+        port: "{{ item }}"
         proto: tcp
+      loop:
+        - '80'
+        - '443'
 
-    - name: UFW - Allow HTTP connections
-      ufw:
-        rule: allow
-        port: 443
-        proto: tcp
-
-    - name: UFW - Deny all other incoming traffic by default
+    - name: Enable UFW
       ufw:
         state: enabled
         policy: deny
-        direction: incoming
+
+    - name: Create bare Git repository directory
+      file:
+        path: "{{ bare_repo_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_group }}"
+        mode: '0755'
+
+    - name: Initialize the bare Git repository
+      command: git init --bare
+      args:
+        chdir: "{{ bare_repo_dir }}"
+        creates: "{{ bare_repo_dir }}/HEAD"
+      become: yes
+      become_user: "{{ deploy_user }}"
+
+    - name: Create project working directory
+      file:
+        path: "{{ project_root_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_group }}"
+        mode: '0775'
+
+    - name: Create hooks directory in bare repo
+      file:
+        path: "{{ bare_repo_dir }}/hooks"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_group }}"
+        mode: '0755'
+
+    - name: Template the post-receive hook script
+      template:
+        src: templates/post-receive.j2
+        dest: "{{ bare_repo_dir }}/hooks/post-receive"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_group }}"
+        mode: '0755'
+
+    - name: Obtain initial Let's Encrypt certificate using standalone
+      command: >-
+        certbot certonly --standalone --non-interactive --agree-tos --rsa-key-size 4096
+        --email {{ certbot_email }}
+        -d {{ domain_name }}
+      args:
+        creates: "/etc/letsencrypt/live/{{ domain_name }}/fullchain.pem"
+      register: certbot_result
+      changed_when: "'Congratulations!' in certbot_result.stdout"
+      failed_when: "'Failed authorization procedure' in certbot_result.stderr"
+
+    - name: Check that Docker SDK for Python is installed
+      pip:
+        name: docker
+        state: present
+      become: yes
+
+    - name: Ensure working directory is initialized as a Git repository linked to bare repo
+      ansible.builtin.shell:
+        cmd: git init && git remote set-url origin {{ bare_repo_dir }} || git remote add origin {{ bare_repo_dir }}
+      args:
+        chdir: "{{ project_root_dir }}"
+        creates: "{{ project_root_dir }}/.git"
+      changed_when: false
+      become: yes
+      become_user: "{{ deploy_user }}"
+
+    - name: Clean working directory of untracked files before checkout
+      ansible.builtin.command:
+        cmd: git clean -fd
+      args:
+        chdir: "{{ project_root_dir }}"
+      become: yes
+      become_user: "{{ deploy_user }}"
+      changed_when: true
+
+    - name: Checkout code from repo into working dir
+      ansible.builtin.git:
+        repo: "{{ bare_repo_dir }}"
+        dest: "{{ project_root_dir }}"
+        version: "{{ deploy_branch }}"
+        force: yes
+        update: yes
+      become: yes
+      become_user: "{{ deploy_user }}"
+
+    - name: Place production .env file from Vault securely
+      copy:
+        content: "{{ production_env_content }}"
+        dest: "{{ project_root_dir }}/.env"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_group }}"
+        mode: '0644'
+
+    - name: Place the docker compose override file
+      copy:
+        content: "{{ docker_compose_override }}"
+        dest: "{{ project_root_dir }}/docker-compose.override.yml"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_group }}"
+        mode: '0644'
+
+    - name: Build Docker Compose images defined in the project
+      ansible.builtin.command:
+        cmd: docker compose build --pull
+        chdir: "{{ project_root_dir }}" # Run in the project directory
+      become: yes
+      become_user: "{{ deploy_user }}"
+      changed_when: true # Assume build always potentially changes state
+
+    - name: Run initial composer install for production
+      ansible.builtin.command:
+        cmd: docker compose run --rm composer install --no-dev --optimize-autoloader --no-interaction --no-progress
+        chdir: "{{ project_root_dir }}"
+      become: yes
+      become_user: "{{ deploy_user }}"
+      changed_when: true # Assume composer install changes state
+
+    - name: Start Docker Compose services and ensure they are running
+      ansible.builtin.command:
+        cmd: docker compose up -d --remove-orphans --force-recreate
+        chdir: "{{ project_root_dir }}"
+      become: yes
+      become_user: "{{ deploy_user }}"
+      changed_when: true # Assume up -d might change state
 
   handlers:
-    - name: Reload Nginx
+    - name: Restart sshd
       service:
-        name: nginx
-        state: reloaded
-
-    - name: Restart Nginx
-      service:
-        name: nginx
+        name: sshd
         state: restarted
+    - name: Enable UFW
+      ufw:
+        state: enabled
+        policy: deny

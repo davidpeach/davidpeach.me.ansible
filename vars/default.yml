@@ -1,12 +1,24 @@
 ---
-create_user: david
-copy_local_key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_ed25519.pub') }}"
+#create_user: david
+#copy_local_key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_ed25519.pub') }}"
+#certbot_email: "mail@davidpeach.co.uk"
+#sys_packages: [ 'curl', 'vim', 'git', 'ufw', 'nginx', 'certbot', 'python3-certbot-nginx' ]
+#http_host: "davidpeach.me"
+#http_conf: "davidpeach.me.conf"
+#http_host_zet: "zet.davidpeach.me"
+#http_conf_zet: "zet.davidpeach.me.conf"
+#http_port: "80"
+#zet_host: "zet.davidpeach.me"
+#zet_conf: "zet.davidpeach.me.conf"
+
+sys_packages: [ 'curl', 'vim', 'git', 'ufw', 'nginx', 'certbot', 'python3-certbot-nginx', 'python3-pip' ]
+deploy_user: deploy
+deploy_group: deploy
+project_root_dir: /srv/www/davidpeach.me
+bare_repo_dir: /var/repo/davidpeach.me.git
+deploy_branch: main
+local_ssh_pub_key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+production_env_content: "{{ production_env_content }}"
+docker_compose_override: "{{ docker_compose_override }}"
 certbot_email: "mail@davidpeach.co.uk"
-sys_packages: [ 'curl', 'vim', 'git', 'ufw', 'nginx', 'certbot', 'python3-certbot-nginx' ]
-http_host: "davidpeach.me"
-http_conf: "davidpeach.me.conf"
-http_host_zet: "zet.davidpeach.me"
-http_conf_zet: "zet.davidpeach.me.conf"
-http_port: "80"
-zet_host: "zet.davidpeach.me"
-zet_conf: "zet.davidpeach.me.conf"
+domain_name: "davidpeach.me"
